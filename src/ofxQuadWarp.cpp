@@ -5,6 +5,10 @@
 
 #include "ofxQuadWarp.h"
 
+#ifndef TARGET_LINUX_ARM
+#include "opencv2/calib3d.hpp"
+#endif
+
 ofxQuadWarp::ofxQuadWarp() {
     anchorSize = 10;
     anchorSizeHalf = anchorSize * 0.5;
@@ -14,6 +18,8 @@ ofxQuadWarp::ofxQuadWarp() {
     bMouseEnabled = false;
     bKeyboardShortcuts = false;
     bShow = false;
+    
+    nudgeAmount = 1.0;
 }
 
 ofxQuadWarp::~ofxQuadWarp() {
@@ -25,7 +31,8 @@ ofxQuadWarp::~ofxQuadWarp() {
 void ofxQuadWarp::setup() {
     enableMouseControls();
     enableKeyboardShortcuts();
-    show();
+    //show();
+    hide();
 }
 
 //----------------------------------------------------- setters.
@@ -37,6 +44,10 @@ void ofxQuadWarp::setPosition(float x, float y) {
 void ofxQuadWarp::setAnchorSize(float value) {
     anchorSize = value;
     anchorSizeHalf = anchorSize * 0.5;
+}
+
+void ofxQuadWarp::setNudgeAmount(float value) {
+    nudgeAmount = value;
 }
 
 //----------------------------------------------------- enable / disable.
@@ -64,15 +75,10 @@ void ofxQuadWarp::disableMouseControls() {
         return;
     }
     bMouseEnabled = false;
-    try {
-        ofRemoveListener(ofEvents().mouseMoved, this, &ofxQuadWarp::onMouseMoved);
-        ofRemoveListener(ofEvents().mousePressed, this, &ofxQuadWarp::onMousePressed);
-        ofRemoveListener(ofEvents().mouseDragged, this, &ofxQuadWarp::onMouseDragged);
-        ofRemoveListener(ofEvents().mouseReleased, this, &ofxQuadWarp::onMouseReleased);
-    }
-    catch(Poco::SystemException) {
-        return;
-    }
+    ofRemoveListener(ofEvents().mouseMoved, this, &ofxQuadWarp::onMouseMoved);
+    ofRemoveListener(ofEvents().mousePressed, this, &ofxQuadWarp::onMousePressed);
+    ofRemoveListener(ofEvents().mouseDragged, this, &ofxQuadWarp::onMouseDragged);
+    ofRemoveListener(ofEvents().mouseReleased, this, &ofxQuadWarp::onMouseReleased);
 }
 
 void ofxQuadWarp::enableKeyboardShortcuts() {
@@ -88,12 +94,7 @@ void ofxQuadWarp::disableKeyboardShortcuts() {
         return;
     }
     bKeyboardShortcuts = false;
-    try {
-        ofRemoveListener(ofEvents().keyPressed, this, &ofxQuadWarp::keyPressed);
-    }
-    catch(Poco::SystemException) {
-        return;
-    }
+    ofRemoveListener(ofEvents().keyPressed, this, &ofxQuadWarp::keyPressed);
 }
 
 //----------------------------------------------------- source / target points.
@@ -334,7 +335,7 @@ void ofxQuadWarp::keyPressed(ofKeyEventArgs& keyArgs) {
         return;
     }
     
-    float nudgeAmount = 0.3;
+    //float nudgeAmount = 1.0;
     ofPoint & selectedPoint = dstPoints[selectedCornerIndex];
     
     switch (keyArgs.key) {
@@ -411,78 +412,48 @@ bool ofxQuadWarp::isShowing() {
 
 //----------------------------------------------------- save / load.
 void ofxQuadWarp::save(const string& path) {
-    ofXml xml;
-    xml.addChild("quadwarp");
-    xml.setTo("quadwarp");
-    xml.addChild("src");
-    xml.setTo("src");
-    for(int i=0; i<4; i++) {
-        xml.addChild("point");
-        xml.setToChild(i);
-        xml.setAttribute("x", ofToString(srcPoints[i].x));
-        xml.setAttribute("y", ofToString(srcPoints[i].y));
-        xml.setToParent();
-    }
-    xml.setToParent();
-    xml.addChild("dst");
-    xml.setTo("dst");
-    for(int i=0; i<4; i++) {
-        xml.addChild("point");
-        xml.setToChild(i);
-        xml.setAttribute("x", ofToString(dstPoints[i].x));
-        xml.setAttribute("y", ofToString(dstPoints[i].y));
-        xml.setToParent();
-    }
-    xml.setToParent();
     
-    xml.setToParent();
+    ofXml xml;
+    xml.appendChild("quadwarp");
+    
+    ofXml src = xml.getChild("quadwarp").appendChild("src");
+    for (unsigned int i = 0; i < 4; i++) {
+        auto t = src.appendChild("point"+ofToString(i));
+        t.setAttribute("x", ofToString(srcPoints[i].x));
+        t.setAttribute("y", ofToString(srcPoints[i].y));
+    }
+    
+    ofXml dst = xml.getChild("quadwarp").appendChild("dst");
+    for (unsigned int i = 0; i < 4; i++) {
+        auto t = dst.appendChild("point"+ofToString(i));
+        t.setAttribute("x", ofToString(dstPoints[i].x));
+        t.setAttribute("y", ofToString(dstPoints[i].y));
+    }
+    
     xml.save(path);
+    
 }
 
+//-----------------------------------------------------
 void ofxQuadWarp::load(const string& path) {
+    
     ofXml xml;
-    bool bOk = xml.load(path);
-    if(bOk == false) {
-        return;
+    if (!xml.load(path)) return;
+    
+    auto src = xml.getChild("quadwarp").getChild("src");
+    for (unsigned int i = 0; i < 4; i++) {
+        auto t = src.getChild("point"+ofToString(i));
+        srcPoints[i].x = t.getAttribute("x").getFloatValue();
+        srcPoints[i].y = t.getAttribute("y").getFloatValue();
     }
     
-    bOk = xml.setTo("quadwarp");
-    if(bOk == false) {
-        return;
+    auto dst = xml.getChild("quadwarp").getChild("dst");
+    for (unsigned int i = 0; i < 4; i++) {
+        auto t = dst.getChild("point"+ofToString(i));
+        dstPoints[i].x = t.getAttribute("x").getFloatValue();
+        dstPoints[i].y = t.getAttribute("y").getFloatValue();
     }
     
-    bOk = xml.setTo("src");
-    if(bOk == false) {
-        return;
-    }
-    
-    for(int i=0; i<xml.getNumChildren(); i++) {
-        bOk = xml.setToChild(i);
-        if(bOk == false) {
-            continue;
-        }
-        srcPoints[i].x = ofToFloat(xml.getAttribute("x"));
-        srcPoints[i].y = ofToFloat(xml.getAttribute("y"));
-        xml.setToParent();
-    }
-    xml.setToParent();
-    
-    bOk = xml.setTo("dst");
-    if(bOk == false) {
-        return;
-    }
-    
-    for(int i=0; i<xml.getNumChildren(); i++) {
-        bOk = xml.setToChild(i);
-        if(bOk == false) {
-            continue;
-        }
-        dstPoints[i].x = ofToFloat(xml.getAttribute("x"));
-        dstPoints[i].y = ofToFloat(xml.getAttribute("y"));
-        xml.setToParent();
-    }
-    xml.setToParent();
-    xml.setToParent();
 }
 
 //----------------------------------------------------- show / hide.
@@ -502,7 +473,7 @@ void ofxQuadWarp::drawQuadOutline() {
         return;
     }
     
-    for(int i=0; i<4; i++) {
+    for(unsigned int i=0; i<4; i++) {
         int j = (i+1) % 4;
         ofDrawLine(dstPoints[i].x + position.x,
                    dstPoints[i].y + position.y,
@@ -516,7 +487,7 @@ void ofxQuadWarp::drawCorners() {
         return;
     }
 
-	for(int i=0; i<4; i++) {
+	for(unsigned int i=0; i<4; i++) {
         ofPoint & point = dstPoints[i];
         drawCornerAt(point);
 	}

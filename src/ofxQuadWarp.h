@@ -9,8 +9,8 @@
 #include "ofMain.h"
 #include "ofxOpenCv.h"
 
-class ofxQuadWarp 
-{
+class ofxQuadWarp {
+
 public: 
     
      ofxQuadWarp();
@@ -70,6 +70,8 @@ public:
     ofPoint srcPoints[4];
     ofPoint dstPoints[4];
     
+    void setNudgeAmount(float value);
+    
 protected:
 
     void onMouseMoved(ofMouseEventArgs & mouseArgs);
@@ -88,4 +90,7 @@ protected:
     bool bMouseEnabled;
     bool bKeyboardShortcuts;
     bool bShow;
+    
+    float nudgeAmount;
+    
 };
